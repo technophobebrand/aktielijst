@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="nl" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Actielijst - Desktop Management Tool</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'app-blue': '#4F86F7',
+                        'app-blue-hover': '#3b71e8',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        .cell-editable:hover {
+            background-color: #f8fafc;
+        }
+        .cell-editable:focus-within {
+            background-color: #ffffff;
+            outline: 2px solid #4F86F7;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans text-slate-800 antialiased overflow-hidden select-none">
+
+    <!-- DATALISTS VOOR DYNAMISCHE AANVULLING -->
+    <datalist id="datalist-categories"></datalist>
+    <datalist id="datalist-assignees"></datalist>
+
+    <!-- TOP HEADER / TOOLBAR -->
+    <header class="h-14 bg-white border-b border-slate-200 px-4 flex items-center justify-between shadow-sm z-20 shrink-0">
+        <!-- Left: App Title -->
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-app-blue/10 text-app-blue rounded-lg">
+                <i data-lucide="check-square" class="w-5 h-5"></i>
+            </div>
+            <h1 class="text-base font-semibold text-slate-800 flex items-center gap-2">
+                <span>Actielijst</span>
+                <span id="item-count-badge" class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full font-normal border border-slate-200">0 acties</span>
+            </h1>
+        </div>
+
+        <!-- Right: Actions, File Operations, Filters & Save -->
+        <div class="flex items-center space-x-3">
+            <div id="save-status-container" class="flex items-center gap-2">
+                <span id="save-indicator" class="text-xs text-slate-500 flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100">
+                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i>
+                    <span>Opgeslagen</span>
+                </span>
+                <button id="btn-save" onclick="saveAllChanges()" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg shadow-xs transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i data-lucide="save" class="w-4 h-4"></i>
+                    <span>Opslaan</span>
+                </button>
+            </div>
+
+            <div class="h-5 w-[1px] bg-slate-200"></div>
+
+            <div class="flex items-center space-x-1">
+                <input type="file" id="json-file-input" accept=".json" class="hidden" onchange="importJSONFile(event)">
+                <button onclick="document.getElementById('json-file-input').click()" class="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg transition" title="Laad acties uit lokaal JSON bestand">
+                    <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                    <span>Open Bestand</span>
+                </button>
+                <button onclick="exportToJSON()" class="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1.5 rounded-lg transition" title="Exporteer acties als acties.json">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                    <span>Bewaar Bestand</span>
+                </button>
+            </div>
+
+            <div class="h-5 w-[1px] bg-slate-200"></div>
+
+            <button onclick="openNewActionModal()" class="flex items-center gap-1.5 bg-app-blue hover:bg-app-blue-hover text-white text-sm font-medium px-3.5 py-1.5 rounded-lg shadow-xs transition">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span>Actie</span>
+            </button>
+
+            <div class="flex items-center space-x-1 border-l border-slate-200 pl-3">
+                <button onclick="toggleFilterPanel()" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition relative" title="Filters">
+                    <i data-lucide="filter" class="w-4.5 h-4.5"></i>
+                    <span id="filter-active-dot" class="hidden absolute top-1.5 right-1.5 w-2 h-2 bg-app-blue rounded-full"></span>
+                </button>
+                <button onclick="resetFiltersAndSort()" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Herstel Weergave">
+                    <i data-lucide="rotate-ccw" class="w-4.5 h-4.5"></i>
+                </button>
+                <button onclick="toggleSettingsModal()" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Waardenbereik & Kleuren Beheren">
+                    <i data-lucide="palette" class="w-4.5 h-4.5"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN WORKSPACE -->
+    <main class="flex-1 flex overflow-hidden relative">
+
+        <!-- LEFT/CENTER: MAIN DATA GRID SECTION -->
+        <section class="flex-1 flex flex-col min-w-0 bg-white">
+            
+            <!-- FILTER BAR -->
+            <div id="filter-panel" class="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3 text-sm">
+                <div class="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-md border border-slate-200 shadow-2xs flex-1 min-w-[200px]">
+                    <i data-lucide="search" class="w-4 h-4 text-slate-400 shrink-0"></i>
+                    <input type="text" id="filter-search" oninput="applyFilters()" placeholder="Zoek op 'Wat' of 'Aantekeningen'..." class="w-full bg-transparent border-none text-xs text-slate-800 focus:outline-none placeholder-slate-400">
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                    <label class="text-xs font-medium text-slate-500">Categorie:</label>
+                    <select id="filter-category" onchange="applyFilters()" class="bg-white border border-slate-200 text-xs rounded-md px-2 py-1.5 focus:ring-1 focus:ring-app-blue outline-none text-slate-700">
+                        <option value="">Alle Categorieën</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                    <label class="text-xs font-medium text-slate-500">Wie:</label>
+                    <select id="filter-assignee" onchange="applyFilters()" class="bg-white border border-slate-200 text-xs rounded-md px-2 py-1.5 focus:ring-1 focus:ring-app-blue outline-none text-slate-700">
+                        <option value="">Iedereen</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-2 bg-white px-2.5 py-1 rounded-md border border-slate-200">
+                    <label class="text-xs font-medium text-slate-500 border-r border-slate-200 pr-2">Status:</label>
+                    <div class="flex items-center gap-2 text-xs text-slate-700">
+                        <label class="flex items-center gap-1 cursor-pointer select-none">
+                            <input type="checkbox" id="filter-status-todo" checked onchange="applyFilters()" class="rounded text-app-blue focus:ring-app-blue">
+                            <span>To Do</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer select-none">
+                            <input type="checkbox" id="filter-status-doing" checked onchange="applyFilters()" class="rounded text-app-blue focus:ring-app-blue">
+                            <span>Doing</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer select-none">
+                            <input type="checkbox" id="filter-status-done" onchange="applyFilters()" class="rounded text-app-blue focus:ring-app-blue">
+                            <span>Done</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button onclick="resetFilters()" class="text-xs text-slate-500 hover:text-slate-800 underline ml-auto">
+                    Filters wissen
+                </button>
+            </div>
+
+            <!-- DATA TABLE CONTAINER -->
+            <div class="flex-1 overflow-auto relative">
+                <table class="w-full text-left border-collapse min-w-[750px]">
+                    <thead class="sticky top-0 bg-slate-100 text-xs font-semibold text-slate-600 border-b border-slate-200 z-10 shadow-2xs">
+                        <tr>
+                            <th onclick="sortTable('category')" class="py-2.5 px-3 cursor-pointer hover:bg-slate-200 transition select-none w-52">
+                                <div class="flex items-center justify-between">
+                                    <span>Categorie</span>
+                                    <i data-lucide="arrow-up-down" class="w-3.5 h-3.5 text-slate-400"></i>
+                                </div>
+                            </th>
+                            <th onclick="sortTable('assignee')" class="py-2.5 px-3 cursor-pointer hover:bg-slate-200 transition select-none w-44">
+                                <div class="flex items-center justify-between">
+                                    <span>Wie</span>
+                                    <i data-lucide="arrow-up-down" class="w-3.5 h-3.5 text-slate-400"></i>
+                                </div>
+                            </th>
+                            <th onclick="sortTable('title')" class="py-2.5 px-3 cursor-pointer hover:bg-slate-200 transition select-none">
+                                <div class="flex items-center justify-between">
+                                    <span>Wat (Omschrijving)</span>
+                                    <i data-lucide="arrow-up-down" class="w-3.5 h-3.5 text-slate-400"></i>
+                                </div>
+                            </th>
+                            <th onclick="sortTable('dueDate')" class="py-2.5 px-3 cursor-pointer hover:bg-slate-200 transition select-none w-36">
+                                <div class="flex items-center justify-between">
+                                    <span>Einddatum</span>
+                                    <i data-lucide="arrow-up-down" class="w-3.5 h-3.5 text-slate-400"></i>
+                                </div>
+                            </th>
+                            <th onclick="sortTable('status')" class="py-2.5 px-3 cursor-pointer hover:bg-slate-200 transition select-none w-32">
+                                <div class="flex items-center justify-between">
+                                    <span>Status</span>
+                                    <i data-lucide="arrow-up-down" class="w-3.5 h-3.5 text-slate-400"></i>
+                                </div>
+                            </th>
+                            <th class="py-2.5 px-3 text-center w-16">
+                                <span>Actie</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="grid-tbody" class="divide-y divide-slate-200 text-sm">
+                        <!-- Dynamic Grid Rows -->
+                    </tbody>
+                </table>
+
+                <div id="empty-state" class="hidden flex flex-col items-center justify-center p-12 text-center text-slate-400">
+                    <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-3 border border-slate-200">
+                        <i data-lucide="inbox" class="w-8 h-8 text-slate-400"></i>
+                    </div>
+                    <p class="font-medium text-slate-600">Geen acties gevonden</p>
+                    <p class="text-xs text-slate-400 mt-1 max-w-sm">Er zijn geen resultaten voor de huidige filters.</p>
+                </div>
+            </div>
+
+            <!-- FOOTER STATUS BAR -->
+            <footer class="h-8 bg-slate-50 border-t border-slate-200 px-4 flex items-center justify-between text-xs text-slate-500 shrink-0">
+                <div class="flex items-center gap-4">
+                    <span id="footer-count">0 van 0 getoond</span>
+                    <span id="selected-status-summary" class="text-slate-400">Selecteer een regel om aantekeningen te bekijken</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>Systeem gereed</span>
+                </div>
+            </footer>
+        </section>
+
+        <!-- RIGHT SIDE PANEL: AANTEKENINGEN & DETAILS -->
+        <aside id="notes-sidebar" class="w-96 bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 shadow-lg transition-all duration-200 z-10">
+            <div class="p-3.5 border-b border-slate-200 bg-white flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="notebook-pen" class="w-4 h-4 text-app-blue"></i>
+                    <h2 class="font-semibold text-slate-800 text-sm">Aantekeningen & Details</h2>
+                </div>
+                <button onclick="deselectRow()" class="text-slate-400 hover:text-slate-600 p-1 rounded hover:bg-slate-100 transition" title="Sluit details">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <div id="notes-content-container" class="flex-1 flex flex-col p-4 overflow-y-auto">
+                <div id="no-selection-view" class="flex-1 flex flex-col items-center justify-center text-center p-6 text-slate-400">
+                    <i data-lucide="mouse-pointer-click" class="w-10 h-10 mb-2 stroke-[1.5] text-slate-300"></i>
+                    <p class="font-medium text-slate-600 text-sm">Geen record geselecteerd</p>
+                    <p class="text-xs text-slate-400 mt-1">Klik op een actie in het grid om hier de aantekeningen te bekijken en te bewerken.</p>
+                </div>
+
+                <div id="active-selection-view" class="hidden flex-1 flex flex-col space-y-4">
+                    <div class="bg-white border border-slate-200 rounded-lg p-3 shadow-2xs space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span id="side-category-badge" class="px-2.5 py-1 text-xs font-semibold rounded text-white shadow-2xs">
+                                Categorie
+                            </span>
+                            <span id="side-status-badge" class="px-2 py-0.5 text-xs font-semibold rounded text-white bg-slate-500">
+                                Status
+                            </span>
+                        </div>
+                        <h3 id="side-title" class="font-semibold text-slate-800 text-base leading-snug">
+                            Titel van de actie
+                        </h3>
+                        <div class="pt-2 border-t border-slate-100 text-xs text-slate-500 space-y-1">
+                            <div class="flex justify-between">
+                                <span class="font-medium text-slate-400">Verantwoordelijke:</span>
+                                <span id="side-assignee" class="font-medium text-slate-700">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="font-medium text-slate-400">Einddatum:</span>
+                                <span id="side-duedate" class="font-medium text-slate-700">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 flex flex-col bg-white border border-slate-200 rounded-lg p-3 shadow-2xs space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <label for="side-notes-textarea" class="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                                <i data-lucide="file-text" class="w-3.5 h-3.5 text-slate-400"></i>
+                                <span>Aantekeningen</span>
+                            </label>
+                            <span class="text-[10px] text-slate-400">Vrij invulveld</span>
+                        </div>
+                        <textarea id="side-notes-textarea" oninput="onNoteInput()" placeholder="Typ hier de aantekeningen..." class="w-full flex-1 min-h-[180px] text-xs text-slate-800 p-2.5 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-app-blue focus:border-transparent resize-none leading-relaxed bg-slate-50 focus:bg-white transition"></textarea>
+                    </div>
+
+                    <div class="pt-1 flex items-center justify-between text-xs">
+                        <span id="notes-unsaved-tag" class="text-amber-600 font-medium hidden flex items-center gap-1">
+                            <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Niet-opgeslagen wijziging
+                        </span>
+                        <button onclick="saveAllChanges()" class="ml-auto bg-slate-800 hover:bg-slate-900 text-white font-medium text-xs px-3 py-1.5 rounded-md transition shadow-2xs flex items-center gap-1">
+                            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                            <span>Opslaan</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+    </main>
+
+    <!-- MODAL: ADD NEW ACTION -->
+    <div id="modal-new-action" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div class="flex items-center gap-2">
+                    <div class="p-1.5 bg-app-blue/10 text-app-blue rounded-lg">
+                        <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                    </div>
+                    <h3 class="font-semibold text-slate-800 text-base">Nieuwe Actie Toevoegen</h3>
+                </div>
+                <button onclick="closeNewActionModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-md transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="form-new-action" onsubmit="handleNewActionSubmit(event)" class="p-5 space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Wat (Omschrijving) *</label>
+                    <input type="text" id="input-wat" required placeholder="Bijv. Implementeren nieuwe export functionaliteit" class="w-full text-xs p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-app-blue outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Categorie *</label>
+                        <input type="text" id="input-categorie" list="datalist-categories" required placeholder="Kies of typ nieuw..." class="w-full text-xs p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-app-blue outline-none bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Wie (Toegewezen aan) *</label>
+                        <input type="text" id="input-wie" list="datalist-assignees" required placeholder="Kies of typ nieuw..." class="w-full text-xs p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-app-blue outline-none bg-white">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Einddatum *</label>
+                        <input type="date" id="input-einddatum" required class="w-full text-xs p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-app-blue outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Status *</label>
+                        <select id="input-status" required class="w-full text-xs p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-app-blue outline-none bg-white">
+                            <option value="To Do">To Do</option>
+                            <option value="Doing">Doing</option>
+                            <option value="Done">Done</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Aantekeningen (Optioneel)</label>
+                    <textarea id="input-aantekeningen" rows="3" placeholder="Aanvullende details..." class="w-full text-xs p-2.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-app-blue outline-none resize-none"></textarea>
+                </div>
+
+                <div class="pt-3 border-t border-slate-200 flex justify-end gap-2">
+                    <button type="button" onclick="closeNewActionModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition">
+                        Annuleren
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-app-blue hover:bg-app-blue-hover text-white rounded-lg text-xs font-medium transition shadow-xs">
+                        Actie Toevoegen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: VALUE RANGE & COLOR MANAGEMENT -->
+    <div id="modal-settings" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <h3 class="font-semibold text-slate-800 text-base flex items-center gap-2">
+                    <i data-lucide="palette" class="w-4 h-4 text-app-blue"></i>
+                    <span>Waardenbereik & Categorie Kleuren</span>
+                </h3>
+                <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-5 text-xs text-slate-600 max-h-[80vh] overflow-y-auto">
+                
+                <!-- MANAGEMENT FOR CATEGORIES VALUE RANGE & COLORS -->
+                <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-semibold text-slate-700">Waardenbereik Categorieën & Kleuren</span>
+                        <span id="cat-range-count" class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">0 opties</span>
+                    </div>
+                    <div class="flex gap-2 items-center">
+                        <input type="text" id="new-cat-input" placeholder="Nieuwe categorie..." class="flex-1 text-xs p-2 border border-slate-300 rounded-md outline-none focus:ring-1 focus:ring-app-blue">
+                        <input type="color" id="new-cat-color" value="#4F86F7" class="w-8 h-8 rounded border border-slate-300 cursor-pointer p-0.5 bg-white" title="Kies kleur voor nieuwe categorie">
+                        <button onclick="addCategoryToRange()" class="bg-app-blue text-white px-3 py-1.5 rounded-md font-medium hover:bg-app-blue-hover transition">
+                            Toevoegen
+                        </button>
+                    </div>
+                    <div id="cat-list-container" class="space-y-1.5 pt-1 max-h-40 overflow-y-auto">
+                        <!-- Dynamic Editable Category Rows -->
+                    </div>
+                </div>
+
+                <!-- MANAGEMENT FOR ASSIGNEES VALUE RANGE -->
+                <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="font-semibold text-slate-700">Waardenbereik Personen (Wie)</span>
+                        <span id="ass-range-count" class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">0 opties</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="text" id="new-ass-input" placeholder="Nieuwe persoon..." class="flex-1 text-xs p-2 border border-slate-300 rounded-md outline-none focus:ring-1 focus:ring-app-blue">
+                        <button onclick="addAssigneeToRange()" class="bg-app-blue text-white px-3 py-1.5 rounded-md font-medium hover:bg-app-blue-hover transition">
+                            Toevoegen
+                        </button>
+                    </div>
+                    <div id="ass-tags-container" class="flex flex-wrap gap-1.5 pt-1 max-h-28 overflow-y-auto">
+                        <!-- Dynamic Tags -->
+                    </div>
+                </div>
+
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                    <span class="font-semibold text-slate-700 block">Demogegevens Herstellen</span>
+                    <p class="text-slate-500">Herstel de standaard voorbeeldacties, categorieën en kleuren.</p>
+                    <button onclick="resetToDemoData()" class="mt-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded transition">
+                        Reset naar Voorbeelddata
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONFIRMATION MODAL -->
+    <div id="modal-confirm" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 border border-slate-200 space-y-4 text-center">
+            <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+                <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h4 class="font-semibold text-slate-800 text-base" id="confirm-title">Actie Verwijderen</h4>
+                <p class="text-xs text-slate-500 mt-1" id="confirm-message">Weet je zeker dat je deze actie wilt verwijderen?</p>
+            </div>
+            <div class="flex justify-center gap-2 pt-2">
+                <button onclick="closeConfirmModal(false)" class="px-4 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition">
+                    Annuleren
+                </button>
+                <button id="confirm-action-btn" onclick="closeConfirmModal(true)" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-medium transition shadow-xs">
+                    Verwijderen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS APP LOGIC -->
+    <script>
+        const STATUS_CONFIG = {
+            'To Do': { bg: 'bg-blue-500 text-white' },
+            'Doing': { bg: 'bg-amber-500 text-white' },
+            'Done': { bg: 'bg-emerald-500 text-white' }
+        };
+
+        const INITIAL_CATEGORIES = [
+            { name: 'MILESTONES', color: '#3B82F6' },
+            { name: 'NEW FEATURES', color: '#10B981' },
+            { name: 'INTEGRATIONS', color: '#F59E0B' },
+            { name: 'STICKINESS', color: '#EF4444' },
+            { name: 'IMPROVEMENTS', color: '#14B8A6' },
+            { name: 'INFRASTRUCTURE', color: '#6366F1' },
+            { name: 'TESTING', color: '#EC4899' }
+        ];
+
+        const INITIAL_ASSIGNEES = ['Alex van Dijk', 'Sanne de Jong', 'Lars Bakker', 'Elin Visser', 'Daan Meijer', 'Lisa Smit'];
+
+        const INITIAL_DEMO_ACTIONS = [
+            {
+                id: 'act-101',
+                category: 'MILESTONES',
+                assignee: 'Alex van Dijk',
+                title: 'ARCHIVING BETA RELEASE',
+                dueDate: '2026-11-15',
+                status: 'Done',
+                notes: 'Beta release succesvol uitgerold.'
+            },
+            {
+                id: 'act-102',
+                category: 'NEW FEATURES',
+                assignee: 'Sanne de Jong',
+                title: 'COMMENT PLATFORM',
+                dueDate: '2026-11-20',
+                status: 'Doing',
+                notes: 'Integratie van reacties onder acties.'
+            },
+            {
+                id: 'act-103',
+                category: 'NEW FEATURES',
+                assignee: 'Lars Bakker',
+                title: 'LOCALIZATION (NL/EN)',
+                dueDate: '2026-12-01',
+                status: 'To Do',
+                notes: 'Vertalingen toevoegen voor de interface.'
+            }
+        ];
+
+        let actions = [];
+        let categoryObjects = []; 
+        let rangeAssignees = [];
+        let selectedActionId = null;
+        let isDirty = false;
+        let sortConfig = { key: 'dueDate', direction: 'asc' };
+        let confirmResolver = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadInitialData();
+            updateDynamicDropdowns();
+            renderGrid();
+            updateSaveStatusUI();
+            lucide.createIcons();
+            document.getElementById('input-einddatum').valueAsDate = new Date();
+        });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (isDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+        function loadInitialData() {
+            const stored = localStorage.getItem('actielijst_data_v2');
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    actions = parsed.actions || [];
+                    categoryObjects = parsed.categories || [...INITIAL_CATEGORIES];
+                    rangeAssignees = parsed.assignees || [...INITIAL_ASSIGNEES];
+                } catch (e) {
+                    resetStateToDefault();
+                }
+            } else {
+                resetStateToDefault();
+            }
+            ensureDataConsistency();
+        }
+
+        function resetStateToDefault() {
+            actions = JSON.parse(JSON.stringify(INITIAL_DEMO_ACTIONS));
+            categoryObjects = JSON.parse(JSON.stringify(INITIAL_CATEGORIES));
+            rangeAssignees = [...INITIAL_ASSIGNEES];
+        }
+
+        function resetToDemoData() {
+            resetStateToDefault();
+            selectedActionId = null;
+            markDirty(true);
+            updateDynamicDropdowns();
+            renderGrid();
+            renderSideNotes();
+            renderRangeManager();
+            toggleSettingsModal();
+        }
+
+        function ensureDataConsistency() {
+            categoryObjects = categoryObjects.map(c => typeof c === 'string' ? { name: c, color: '#4F86F7' } : c);
+            
+            actions.forEach(a => {
+                if (a.category && !categoryObjects.some(c => c.name.toUpperCase() === a.category.toUpperCase())) {
+                    categoryObjects.push({ name: a.category.toUpperCase(), color: '#4F86F7' });
+                }
+                if (a.assignee && !rangeAssignees.includes(a.assignee)) {
+                    rangeAssignees.push(a.assignee);
+                }
+            });
+            categoryObjects.sort((a,b) => a.name.localeCompare(b.name));
+            rangeAssignees.sort();
+        }
+
+        function getCategoryColor(catName) {
+            if (!catName) return '#4F86F7';
+            const found = categoryObjects.find(c => c.name.toUpperCase() === catName.toUpperCase());
+            return found ? found.color : '#4F86F7';
+        }
+
+        function getContrastTextColor(hexColor) {
+            if (!hexColor || hexColor.length < 6) return '#ffffff';
+            const hex = hexColor.replace('#', '');
+            const r = parseInt(hex.substr(0,2), 16);
+            const g = parseInt(hex.substr(2,2), 16);
+            const b = parseInt(hex.substr(4,2), 16);
+            const yiq = ((r*299)+(g*587)+(b*114))/1000;
+            return (yiq >= 128) ? '#1e293b' : '#ffffff';
+        }
+
+        function markDirty(dirty = true) {
+            isDirty = dirty;
+            updateSaveStatusUI();
+        }
+
+        function updateSaveStatusUI() {
+            const indicator = document.getElementById('save-indicator');
+            const saveBtn = document.getElementById('btn-save');
+            const notesUnsaved = document.getElementById('notes-unsaved-tag');
+
+            if (isDirty) {
+                indicator.className = 'text-xs text-amber-700 bg-amber-50 font-medium flex items-center gap-1.5 px-2.5 py-1 rounded border border-amber-200';
+                indicator.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Wijzigingen niet opgeslagen`;
+                saveBtn.disabled = false;
+                if (notesUnsaved) notesUnsaved.classList.remove('hidden');
+            } else {
+                indicator.className = 'text-xs text-slate-600 flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100';
+                indicator.innerHTML = `<i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i> Opgeslagen`;
+                saveBtn.disabled = true;
+                if (notesUnsaved) notesUnsaved.classList.add('hidden');
+            }
+            lucide.createIcons();
+        }
+
+        function saveAllChanges() {
+            const dataToSave = {
+                actions: actions,
+                categories: categoryObjects,
+                assignees: rangeAssignees
+            };
+            localStorage.setItem('actielijst_data_v2', JSON.stringify(dataToSave));
+            markDirty(false);
+            
+            const btn = document.getElementById('btn-save');
+            btn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Opgeslagen!`;
+            setTimeout(() => {
+                btn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i> Opslaan`;
+                lucide.createIcons();
+            }, 1200);
+            lucide.createIcons();
+        }
+
+        function addCategoryToRange() {
+            const input = document.getElementById('new-cat-input');
+            const colorInput = document.getElementById('new-cat-color');
+            const val = input.value.trim().toUpperCase();
+            if (val && !categoryObjects.some(c => c.name === val)) {
+                categoryObjects.push({ name: val, color: colorInput.value });
+                categoryObjects.sort((a,b) => a.name.localeCompare(b.name));
+                input.value = '';
+                markDirty(true);
+                updateDynamicDropdowns();
+                renderRangeManager();
+                renderGrid();
+                renderSideNotes();
+            }
+        }
+
+        function updateCategoryColor(catName, newColor) {
+            const item = categoryObjects.find(c => c.name === catName);
+            if (item) {
+                item.color = newColor;
+                markDirty(true);
+                renderGrid();
+                renderSideNotes();
+            }
+        }
+
+        function removeCategoryFromRange(catName) {
+            categoryObjects = categoryObjects.filter(c => c.name !== catName);
+            markDirty(true);
+            updateDynamicDropdowns();
+            renderRangeManager();
+            renderGrid();
+            renderSideNotes();
+        }
+
+        function addAssigneeToRange() {
+            const input = document.getElementById('new-ass-input');
+            const val = input.value.trim();
+            if (val && !rangeAssignees.includes(val)) {
+                rangeAssignees.push(val);
+                rangeAssignees.sort();
+                input.value = '';
+                markDirty(true);
+                updateDynamicDropdowns();
+                renderRangeManager();
+                renderGrid();
+            }
+        }
+
+        function removeAssigneeFromRange(ass) {
+            rangeAssignees = rangeAssignees.filter(a => a !== ass);
+            markDirty(true);
+            updateDynamicDropdowns();
+            renderRangeManager();
+            renderGrid();
+        }
+
+        function renderRangeManager() {
+            document.getElementById('cat-range-count').textContent = `${categoryObjects.length} opties`;
+            const catContainer = document.getElementById('cat-list-container');
+            catContainer.innerHTML = categoryObjects.map(c => `
+                <div class="flex items-center justify-between bg-white border border-slate-200 px-2.5 py-1.5 rounded-md text-xs shadow-2xs">
+                    <div class="flex items-center gap-2">
+                        <input type="color" value="${c.color}" onchange="updateCategoryColor('${escapeHtml(c.name)}', this.value)" class="w-5 h-5 rounded cursor-pointer border border-slate-300 p-0 bg-transparent">
+                        <span class="font-semibold text-slate-700">${escapeHtml(c.name)}</span>
+                    </div>
+                    <button onclick="removeCategoryFromRange('${escapeHtml(c.name)}')" class="text-slate-400 hover:text-rose-600 transition p-1">
+                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            document.getElementById('ass-range-count').textContent = `${rangeAssignees.length} opties`;
+            const assContainer = document.getElementById('ass-tags-container');
+            assContainer.innerHTML = rangeAssignees.map(a => `
+                <span class="inline-flex items-center gap-1 bg-white border border-slate-200 px-2 py-0.5 rounded text-xs text-slate-700 shadow-2xs">
+                    <span>${escapeHtml(a)}</span>
+                    <button onclick="removeAssigneeFromRange('${escapeHtml(a)}')" class="text-slate-400 hover:text-rose-600 transition">
+                        <i data-lucide="x" class="w-3 h-3"></i>
+                    </button>
+                </span>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        function updateDynamicDropdowns() {
+            ensureDataConsistency();
+
+            const filterCat = document.getElementById('filter-category');
+            const currentCatVal = filterCat.value;
+            filterCat.innerHTML = `<option value="">Alle Categorieën</option>` + 
+                categoryObjects.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+            filterCat.value = currentCatVal;
+
+            const datalistCat = document.getElementById('datalist-categories');
+            datalistCat.innerHTML = categoryObjects.map(c => `<option value="${escapeHtml(c.name)}">`).join('');
+
+            const filterAss = document.getElementById('filter-assignee');
+            const currentAssVal = filterAss.value;
+            filterAss.innerHTML = `<option value="">Iedereen</option>` + 
+                rangeAssignees.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+            filterAss.value = currentAssVal;
+
+            const datalistAss = document.getElementById('datalist-assignees');
+            datalistAss.innerHTML = rangeAssignees.map(a => `<option value="${escapeHtml(a)}">`).join('');
+        }
+
+        function renderGrid() {
+            const tbody = document.getElementById('grid-tbody');
+            const emptyState = document.getElementById('empty-state');
+            
+            let filtered = filterActionsList(actions);
+
+            filtered.sort((a, b) => {
+                let valA = a[sortConfig.key] || '';
+                let valB = b[sortConfig.key] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+
+                if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            document.getElementById('item-count-badge').textContent = `${actions.length} acties`;
+            document.getElementById('footer-count').textContent = `${filtered.length} van ${actions.length} getoond`;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            tbody.innerHTML = filtered.map(item => {
+                const isSelected = item.id === selectedActionId;
+                const hexBg = getCategoryColor(item.category);
+                const textColor = getContrastTextColor(hexBg);
+                const statusObj = STATUS_CONFIG[item.status] || { bg: 'bg-slate-500 text-white' };
+
+                return `
+                    <tr id="row-${item.id}" 
+                        onclick="selectRow('${item.id}')"
+                        class="group transition duration-150 cursor-pointer ${isSelected ? 'bg-blue-50/80 ring-1 ring-app-blue/40 font-medium' : 'hover:bg-slate-50/80'}">
+                        
+                        <!-- Categorie Vrij/Selecteerbaar veld met Dynamische Kleur -->
+                        <td class="py-2 px-3 cell-editable">
+                            <input type="text" 
+                                   value="${escapeHtml(item.category)}" 
+                                   list="datalist-categories"
+                                   onfocus="selectRow('${item.id}')"
+                                   onchange="updateCell('${item.id}', 'category', this.value)"
+                                   onkeydown="if(event.key==='Enter') this.blur()"
+                                   style="background-color: ${hexBg}; color: ${textColor};"
+                                   class="w-full text-xs font-semibold py-1 px-2 rounded cursor-pointer border-none outline-none shadow-2xs uppercase">
+                        </td>
+
+                        <!-- Wie Vrij/Selecteerbaar veld -->
+                        <td class="py-2 px-3 text-slate-700 font-medium cell-editable">
+                            <input type="text" 
+                                   value="${escapeHtml(item.assignee)}" 
+                                   list="datalist-assignees"
+                                   onfocus="selectRow('${item.id}')"
+                                   onchange="updateCell('${item.id}', 'assignee', this.value)"
+                                   onkeydown="if(event.key==='Enter') this.blur()"
+                                   class="w-full bg-transparent text-xs py-1 px-1.5 rounded text-slate-700 hover:bg-white border border-transparent hover:border-slate-200 outline-none">
+                        </td>
+
+                        <!-- Wat (Titel) Edit -->
+                        <td class="py-2 px-3 font-medium text-slate-800 cell-editable">
+                            <input type="text" value="${escapeHtml(item.title)}" 
+                                   onfocus="selectRow('${item.id}')"
+                                   onblur="updateCell('${item.id}', 'title', this.value)"
+                                   onkeydown="if(event.key==='Enter') this.blur()"
+                                   class="w-full bg-transparent text-xs py-1 px-1.5 rounded text-slate-800 font-semibold focus:bg-white focus:border border-slate-300 outline-none">
+                        </td>
+
+                        <!-- Einddatum -->
+                        <td class="py-2 px-3 text-slate-600 text-xs cell-editable">
+                            <input type="date" value="${item.dueDate || ''}" 
+                                   onfocus="selectRow('${item.id}')"
+                                   onchange="updateCell('${item.id}', 'dueDate', this.value)"
+                                   class="bg-transparent text-xs py-1 px-1.5 rounded text-slate-600 focus:bg-white focus:border border-slate-300 outline-none">
+                        </td>
+
+                        <!-- Status Badge Dropdown -->
+                        <td class="py-2 px-3 cell-editable">
+                            <select onfocus="selectRow('${item.id}')"
+                                    onchange="updateCell('${item.id}', 'status', this.value)" 
+                                    class="w-full text-xs font-semibold py-1 px-2 rounded cursor-pointer border-none focus:ring-1 focus:ring-app-blue outline-none ${statusObj.bg}">
+                                <option value="To Do" ${item.status === 'To Do' ? 'selected' : ''} class="bg-white text-slate-800 font-normal">To Do</option>
+                                <option value="Doing" ${item.status === 'Doing' ? 'selected' : ''} class="bg-white text-slate-800 font-normal">Doing</option>
+                                <option value="Done" ${item.status === 'Done' ? 'selected' : ''} class="bg-white text-slate-800 font-normal">Done</option>
+                            </select>
+                        </td>
+
+                        <!-- Verwijderen -->
+                        <td class="py-2 px-3 text-center" onclick="event.stopPropagation()">
+                            <button onclick="confirmDeleteAction('${item.id}')" 
+                                    class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition opacity-60 group-hover:opacity-100" title="Verwijder actie">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </td>
+
+                    </tr>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        function updateCell(id, field, value) {
+            const item = actions.find(a => a.id === id);
+            if (item && item[field] !== value) {
+                if (field === 'category') value = value.toUpperCase();
+                
+                item[field] = value;
+                markDirty(true);
+
+                // Auto add to range list if new
+                if (field === 'category' && value && !categoryObjects.some(c => c.name === value)) {
+                    categoryObjects.push({ name: value, color: '#4F86F7' });
+                    categoryObjects.sort((a,b) => a.name.localeCompare(b.name));
+                }
+                if (field === 'assignee' && value && !rangeAssignees.includes(value)) {
+                    rangeAssignees.push(value);
+                    rangeAssignees.sort();
+                }
+
+                updateDynamicDropdowns();
+                selectedActionId = id;
+                renderGrid();
+                renderSideNotes();
+            }
+        }
+
+        function selectRow(id) {
+            if (selectedActionId === id) return;
+            selectedActionId = id;
+            renderGrid();
+            renderSideNotes();
+        }
+
+        function deselectRow() {
+            selectedActionId = null;
+            renderGrid();
+            renderSideNotes();
+        }
+
+        function renderSideNotes() {
+            const noSelection = document.getElementById('no-selection-view');
+            const activeSelection = document.getElementById('active-selection-view');
+            const summarySpan = document.getElementById('selected-status-summary');
+
+            if (!selectedActionId) {
+                noSelection.classList.remove('hidden');
+                activeSelection.classList.add('hidden');
+                summarySpan.textContent = "Selecteer een regel om aantekeningen te bekijken";
+                return;
+            }
+
+            const item = actions.find(a => a.id === selectedActionId);
+            if (!item) {
+                deselectRow();
+                return;
+            }
+
+            noSelection.classList.add('hidden');
+            activeSelection.classList.remove('hidden');
+
+            const hexBg = getCategoryColor(item.category);
+            const textColor = getContrastTextColor(hexBg);
+            const statusObj = STATUS_CONFIG[item.status] || { bg: 'bg-slate-500 text-white' };
+
+            const sideCat = document.getElementById('side-category-badge');
+            sideCat.textContent = item.category || 'GEEN CATEGORIE';
+            sideCat.style.backgroundColor = hexBg;
+            sideCat.style.color = textColor;
+
+            const sideStatus = document.getElementById('side-status-badge');
+            sideStatus.textContent = item.status || 'To Do';
+            sideStatus.className = `px-2 py-0.5 text-xs font-semibold rounded ${statusObj.bg}`;
+
+            document.getElementById('side-title').textContent = item.title || 'Geen titel';
+            document.getElementById('side-assignee').textContent = item.assignee || 'Niet toegewezen';
+            document.getElementById('side-duedate').textContent = item.dueDate ? formatDateNL(item.dueDate) : 'Geen datum';
+            
+            const notesArea = document.getElementById('side-notes-textarea');
+            notesArea.value = item.notes || '';
+
+            summarySpan.textContent = `Geselecteerd: "${item.title}"`;
+            lucide.createIcons();
+        }
+
+        function onNoteInput() {
+            if (!selectedActionId) return;
+            const item = actions.find(a => a.id === selectedActionId);
+            const val = document.getElementById('side-notes-textarea').value;
+            if (item && item.notes !== val) {
+                item.notes = val;
+                markDirty(true);
+            }
+        }
+
+        function filterActionsList(list) {
+            const search = document.getElementById('filter-search').value.toLowerCase();
+            const cat = document.getElementById('filter-category').value;
+            const assignee = document.getElementById('filter-assignee').value;
+            
+            const showToDo = document.getElementById('filter-status-todo').checked;
+            const showDoing = document.getElementById('filter-status-doing').checked;
+            const showDone = document.getElementById('filter-status-done').checked;
+
+            const activeDot = document.getElementById('filter-active-dot');
+            if (search || cat || assignee || !showToDo || !showDoing || showDone) {
+                activeDot.classList.remove('hidden');
+            } else {
+                activeDot.classList.add('hidden');
+            }
+
+            return list.filter(item => {
+                const matchesSearch = !search || 
+                    (item.title && item.title.toLowerCase().includes(search)) || 
+                    (item.notes && item.notes.toLowerCase().includes(search));
+                const matchesCat = !cat || item.category === cat;
+                const matchesAssignee = !assignee || item.assignee === assignee;
+                
+                let matchesStatus = false;
+                if (item.status === 'To Do' && showToDo) matchesStatus = true;
+                if (item.status === 'Doing' && showDoing) matchesStatus = true;
+                if (item.status === 'Done' && showDone) matchesStatus = true;
+
+                return matchesSearch && matchesCat && matchesAssignee && matchesStatus;
+            });
+        }
+
+        function applyFilters() {
+            renderGrid();
+        }
+
+        function resetFilters() {
+            document.getElementById('filter-search').value = '';
+            document.getElementById('filter-category').value = '';
+            document.getElementById('filter-assignee').value = '';
+            document.getElementById('filter-status-todo').checked = true;
+            document.getElementById('filter-status-doing').checked = true;
+            document.getElementById('filter-status-done').checked = false;
+            applyFilters();
+        }
+
+        function resetFiltersAndSort() {
+            resetFilters();
+            sortConfig = { key: 'dueDate', direction: 'asc' };
+            renderGrid();
+        }
+
+        function sortTable(key) {
+            if (sortConfig.key === key) {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = key;
+                sortConfig.direction = 'asc';
+            }
+            renderGrid();
+        }
+
+        function toggleFilterPanel() {
+            const panel = document.getElementById('filter-panel');
+            panel.classList.toggle('hidden');
+        }
+
+        function openNewActionModal() {
+            document.getElementById('form-new-action').reset();
+            document.getElementById('input-einddatum').valueAsDate = new Date();
+            document.getElementById('modal-new-action').classList.remove('hidden');
+        }
+
+        function closeNewActionModal() {
+            document.getElementById('modal-new-action').classList.add('hidden');
+        }
+
+        function handleNewActionSubmit(e) {
+            e.preventDefault();
+            
+            const catVal = document.getElementById('input-categorie').value.trim().toUpperCase();
+            const assVal = document.getElementById('input-wie').value.trim();
+
+            const newAction = {
+                id: 'act-' + Date.now(),
+                title: document.getElementById('input-wat').value.trim(),
+                category: catVal,
+                assignee: assVal,
+                dueDate: document.getElementById('input-einddatum').value,
+                status: document.getElementById('input-status').value,
+                notes: document.getElementById('input-aantekeningen').value.trim()
+            };
+
+            if (catVal && !categoryObjects.some(c => c.name === catVal)) {
+                categoryObjects.push({ name: catVal, color: '#4F86F7' });
+                categoryObjects.sort((a,b) => a.name.localeCompare(b.name));
+            }
+            if (assVal && !rangeAssignees.includes(assVal)) {
+                rangeAssignees.push(assVal);
+                rangeAssignees.sort();
+            }
+
+            actions.unshift(newAction);
+            selectedActionId = newAction.id;
+            
+            markDirty(true);
+            closeNewActionModal();
+            updateDynamicDropdowns();
+            renderGrid();
+            renderSideNotes();
+        }
+
+        function confirmDeleteAction(id) {
+            const item = actions.find(a => a.id === id);
+            if (!item) return;
+
+            document.getElementById('confirm-message').textContent = `Weet je zeker dat je "${item.title}" wilt verwijderen?`;
+            document.getElementById('modal-confirm').classList.remove('hidden');
+
+            confirmResolver = (confirmed) => {
+                if (confirmed) {
+                    actions = actions.filter(a => a.id !== id);
+                    if (selectedActionId === id) {
+                        selectedActionId = null;
+                    }
+                    markDirty(true);
+                    updateDynamicDropdowns();
+                    renderGrid();
+                    renderSideNotes();
+                }
+            };
+        }
+
+        function closeConfirmModal(result) {
+            document.getElementById('modal-confirm').classList.add('hidden');
+            if (confirmResolver) {
+                confirmResolver(result);
+                confirmResolver = null;
+            }
+        }
+
+        function exportToJSON() {
+            const exportObject = {
+                actions: actions,
+                categories: categoryObjects,
+                assignees: rangeAssignees
+            };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObject, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "acties.json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function importJSONFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported.actions && Array.isArray(imported.actions)) {
+                        actions = imported.actions;
+                        categoryObjects = imported.categories || [...INITIAL_CATEGORIES];
+                        rangeAssignees = imported.assignees || [...INITIAL_ASSIGNEES];
+                    } else if (Array.isArray(imported)) {
+                        actions = imported;
+                    }
+                    ensureDataConsistency();
+                    selectedActionId = null;
+                    markDirty(true);
+                    updateDynamicDropdowns();
+                    renderGrid();
+                    renderSideNotes();
+                    saveAllChanges();
+                    alert('Actielijst, waardenbereiken en kleuren succesvol geïmporteerd!');
+                } catch (err) {
+                    alert('Fout bij het lezen van het JSON-bestand: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        function toggleSettingsModal() {
+            const modal = document.getElementById('modal-settings');
+            modal.classList.toggle('hidden');
+            if (!modal.classList.contains('hidden')) {
+                renderRangeManager();
+            }
+        }
+
+        function formatDateNL(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            if (isNaN(d.getTime())) return dateString;
+            return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+    </script>
+</body>
+</html>
