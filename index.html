@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Actielijst - Desktop Management Tool</title>
+<!-- HIER PLAATS JE DE APP-INSTELLINGEN -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#0078d4">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- EINDE APP-INSTELLINGEN -->
+    
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -1139,6 +1146,13 @@
             if (!str) return '';
             return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         }
+        if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(() => console.log('Service Worker geregistreerd!'))
+        .catch((err) => console.log('Registratie mislukt: ', err));
+    });
+  }
     </script>
 </body>
 </html>
