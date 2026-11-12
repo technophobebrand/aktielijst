@@ -1,9 +1,19 @@
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(() => console.log('Service Worker geregistreerd!'))
-        .catch((err) => console.log('Registratie mislukt: ', err));
-    });
-  }
-</script>
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches.open('aktielijst-v1').then((cache) => {
+      return cache.addAll([
+        './index.html',
+        './manifest.json'
+        // Voeg hier eventueel ook je CSS- en JS-bestanden aan toe als je die hebt
+      ]);
+    })
+  );
+});
+
+self.addEventListener('fetch', (e) => {
+  e.respondWith(
+    caches.match(e.request).then((response) => {
+      return response || fetch(e.request);
+    })
+  );
+});
